@@ -137,9 +137,42 @@ def smtp_send(password, message_info, message_text):
                 'Date': Date string for current date/time in SMTP format
                 'Subject': Email subject
             Other keys can be added to support other email headers, etc.
+    :author: Lauren Lee 
     """
-data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-pass  # Replace this line with your code
+    tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_socket.connect((SMTP_SERVER, SMTP_PORT))
+    response = get_response(tcp_socket)
+    evaluate_response(response, b'220')
+    # have to figure out what goes in server_interaction method TODO
+    # (tcp_socket, b'EHLO\r\n', b'250')
+    # (tcp_socket, b'STARTTLS\r\n', b'220')
+
+    context = ssl.create_default_context()
+    wrapped_socket = context.wrap_socket(tcp_socket, server_hostname=SMTP_SERVER)
+
+    (wrapped_socket, b'EHLO', b'250')
+    (wrapped_socket, b'AUTH LOGIN\r\n', b'334')
+
+    username = message_info('From')
+    username = str.encode(username)
+    username = base64.standard_b64encode(username)
+    username += b'\r\n'
+
+    password = str.encode(password)
+    password = base64.standard_b64encode(password)
+    password += b'\r\n'
+
+    person_from = message_info("From")
+    person_from = str.encode(person_from)
+
+    person_to = (message_info('To'))
+    person_to = str.encode(person_to)
+
+    wrapped_socket.send(b'To: ', + message_info['To'].encode() + b'\r\n')
+    wrapped_socket(b'Subject: This is the subject\r\n')
+    date = get_formatted_date()
+    date = str.encode(date)
+    wrapped_socket.send(b'Date: ' + date + b'\r\n\r\n')
 
 
 def write_headers():
@@ -150,14 +183,30 @@ def write_headers():
     """
 
 
-def get_connection():
+def server_interaction():
+    """
+    :return:
+    """
+
+
+def context_wrap_socket(tcp_socket):
+    """
+    TODO: MAY NOT NEED 
+    :return:
+    """
+    # context = ssl.create_default_context()
+    # wrapped_socket = context.wrap_socket(tcp_socket, server_hostname=SMTP_SERVER)
+    # return wrapped_socket
+
+
+def evaluate_response():
     """
 
     :return:
     """
 
 
-def get_resources(data_socket):
+def get_response(tcp_socket):
     """
     Read the next byte from the socket data_socket.
 
@@ -172,7 +221,7 @@ def get_resources(data_socket):
     :return: the next byte, as a bytes object with a single byte in it
     :author: Joe Casper
     """
-    return data_socket.recv(1024)
+    return tcp_socket.recv(1)
 
 
 # Your code and additional functions go here. (Replace this line, too.)
