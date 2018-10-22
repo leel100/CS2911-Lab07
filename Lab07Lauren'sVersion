@@ -189,6 +189,7 @@ def check_TLS(msg):
     """
     reading the message from the server and returning the data to the client
     :return: the data from the server
+    :author: Lauren Lee 
     """
     msg = msg.split(b'\r\n')
     print(msg)
