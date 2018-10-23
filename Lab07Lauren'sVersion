@@ -142,33 +142,62 @@ def smtp_send(password, message_info, message_text):
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_socket.connect((SMTP_SERVER, SMTP_PORT))
     response = get_response(tcp_socket)
-    check_TLS(response)
-
     evaluate_response(response, b'220')
-    # have to figure out what goes in server_interaction method TODO
-    (tcp_socket, b'EHLO\r\n', b'250')
-    (tcp_socket, b'STARTTLS\r\n', b'220')
+
+    tcp_socket.send(b'EHLO\r\n')
+    response = get_response(tcp_socket)
+    evaluate_response(response, b'250')
+
+    tcp_socket.send(b'STARTTLS\r\n')
+    response = get_response(tcp_socket)
+    evaluate_response(response, b'220')
 
     context = ssl.create_default_context()
     wrapped_socket = context.wrap_socket(tcp_socket, server_hostname=SMTP_SERVER)
 
-    (wrapped_socket, b'EHLO', b'250')
-    (wrapped_socket, b'AUTH LOGIN\r\n', b'334')
+    wrapped_socket.send(b'EHLO\r\n')
+    response = get_response(wrapped_socket)
+    evaluate_response(response, b'250')
 
-    username = message_info('From')
+    wrapped_socket.send(b'AUTH LOGIN\r\n')
+    response = get_response(wrapped_socket)
+    evaluate_response(response, b'334')
+
+    username = message_info['From']
     username = str.encode(username)
     username = base64.standard_b64encode(username)
     username += b'\r\n'
+
+    wrapped_socket.send(username)
+    response = get_response(wrapped_socket)
+    evaluate_response(response, b'334')
 
     password = str.encode(password)
     password = base64.standard_b64encode(password)
     password += b'\r\n'
 
+    wrapped_socket.send(password)
+    response = get_response(wrapped_socket)
+    evaluate_response(response, b'235')
+
+
     person_from = message_info("From")
     person_from = str.encode(person_from)
+    
+    wrapped_socket.send()
+    response = get_response(wrapped_socket)
+    evaluate_response(response, b'250')
+
+    
 
     person_to = (message_info('To'))
     person_to = str.encode(person_to)
+    
+    wrapped_socket.send(password)
+    response = get_response(wrapped_socket)
+    evaluate_response(response, b'250')
+    #expect 354
+
 
     wrapped_socket.send(b'To: ', + message_info['To'].encode() + b'\r\n')
     wrapped_socket(b'Subject: This is the subject\r\n')
@@ -185,24 +214,22 @@ def write_headers():
     """
 
 
-def check_TLS(msg):
+def server_interaction():
     """
+
+    :return:
+    """
+
+
+def evaluate_response(msg, expect_code):
+    """
+    TODO: FINISH THIS MEHTOD
     reading the message from the server and returning the data to the client
     :return: the data from the server
-    :author: Lauren Lee 
     """
-    msg = msg.split(b'\r\n')
-    print(msg)
-    is_tls = True
-    # Check last line - checks for the last element in the list
-    is_tls = (msg[len(msg) - 1].split(b' ')[1]) == b'STARTTLS'
-    # check if in message body
-    if not is_tls:
-        for line in range (0,len(msg)-2):
-            line = msg[line].split(b'-')
-            is_tls = line[1] == b'STARTTLS'
-    # return is_tls
-    print(msg, is_tls)
+
+    if msg[0:3] != expect_code:
+        raise ValueError
 
 
 def context_wrap_socket(tcp_socket):
@@ -213,13 +240,6 @@ def context_wrap_socket(tcp_socket):
     # context = ssl.create_default_context()
     # wrapped_socket = context.wrap_socket(tcp_socket, server_hostname=SMTP_SERVER)
     # return wrapped_socket
-
-
-def evaluate_response():
-    """
-
-    :return:
-    """
 
 
 def get_response(tcp_socket):
@@ -237,21 +257,19 @@ def get_response(tcp_socket):
     :return: the next byte, as a bytes object with a single byte in it
     :author: Lauren Lee
     """
-    #recieve response from the server
-    byte = b''
-    read__line = b''
-    while read__line != b'\r':
-        #scope will only exist in the while loop
-       read__line = tcp_socket.rev(1)
-       #anything that is recieved in socket is a byte
-       #byte and read_line are both byte literals
-       byte += read__line
+    # recieve response from the server
+    # byte = b''
+    # read__line = b''
+    # while read__line != b'\r':
+    #     # scope will only exist in the while loop
+    #     read__line = tcp_socket.rev(1)
+    #     # anything that is recieved in socket is a byte
+    #     # byte and read_line are both byte literals
+    #     byte += read__line
+    #
+    # return byte
 
-    return byte
-
-
-
-
+    return tcp_socket.recv(1024)
 
 
 # Your code and additional functions go here. (Replace this line, too.)
