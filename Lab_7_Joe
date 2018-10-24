@@ -62,11 +62,11 @@ def main():
     message_info['Date'] = 'Thu, 9 Oct 2014 23:56:09 +0000'
     message_info['Date'] = get_formatted_date()
 
-    print("message_info =", message_info)
-
-    message_text = 'Test message_info number 6\r\n\r\nAnother line.'
+    message_text = 'Hello, this is a test message.\r\n.'
 
     smtp_send(password, message_info, message_text)
+
+    print("Message Sent")
 
 
 def login_gui():
@@ -124,19 +124,13 @@ def center_gui_on_screen(gui, gui_width, gui_height):
     return gui.geometry('%dx%d+%d+%d' % (gui_width, gui_height, x_coord, y_coord))
 
 
-# *** Do not modify code above this line ***
-
-
+# *** Do not modify code above this line **
 def smtp_send(password, message_info, message_text):
-    """Send a message via SMTP.
-
-    :param password: String containing user password.
-    :param message_info: Dictionary with string values for the following keys:
-                'To': Recipient address (only one recipient required)
-                'From': Sender address
-                'Date': Date string for current date/time in SMTP format
-                'Subject': Email subject
-    :param message_text: The body of the message being sent
+    """
+    Sends an email using smtp protocol
+    :param password: The user's password that accesses the email account
+    :param message_info: Holds the From, To, Subject, and Date headers
+    :param message_text: The text held inside the message
     :author: Joe Casper
     """
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -144,75 +138,105 @@ def smtp_send(password, message_info, message_text):
 
     # Get the initial response from the server. This response should contain a 220
     response = get_response(tcp_socket)
-    
-    # receive 220 from the server
-    if b'220' in response:
-        # send 'ehlo'; store the server's response
-        response = send_ehlo(tcp_socket)
 
-    # if STARTTLS is present, send that to server. Begin encryption.
-    tcp_socket.send(b'STARTTLS\r\n')
+    while b'221' not in response:
+        if b'220' in response:
+            response = send_ehlo(tcp_socket)
 
-    # read through the server's OK message
-    read_line(tcp_socket)
+        elif b'STARTTLS' in response:
+            tcp_socket.send(b'STARTTLS\r\n')
+            response = send_with_encryption(password, message_info, message_text, tcp_socket)
+
+
+def send_with_encryption(password, message_info, message_text, tcp_socket):
+    """
+    Encrypts the tcp_socket
+    :param password: The users password for their email address
+    :param message_info: the headers of the email
+    :param message_text: the text of the email
+    :param tcp_socket: the socket that has the connection
+    :author: Joe Casper
+    :return: a response from the server
+    """
+    response = read_line(tcp_socket)
 
     # encrypt & wrap socket
     context = ssl.create_default_context()
     wrapped_socket = context.wrap_socket(tcp_socket, server_hostname=SMTP_SERVER)
 
-    # send ehlo again
-    response = send_ehlo(wrapped_socket)
+    while b'221' not in response:
+        if b'220' in response:
+            response = send_ehlo(wrapped_socket)
+        elif b'AUTH LOGIN' in response:
+            wrapped_socket.send(b'AUTH LOGIN\r\n')
+            response = read_line(wrapped_socket)
+        elif b'334' in response:
+            response = send_username_and_pass(message_info.get("From"), password, wrapped_socket)
+        elif b'235' in response:
+            response = send_mail_from(message_info.get("From"), message_info.get("To"), message_text, wrapped_socket)
 
-    # if present in the response, send AUTH_LOGIN
-    wrapped_socket.send(b'AUTH LOGIN\r\n')
+    return response
 
-    # Server asks for username, read past line
-    response_username = read_line(wrapped_socket)
 
-    # Send username
-    if b'334' in response_username:
-        print(message_info.get('From').encode('ASCII') + b'\r\n')
-        wrapped_socket.send(message_info.get('From').encode('ASCII') + b'\r\n')
+def send_mail_from(user, to, message_text, socket):
+    """
+    This is the method that finally sends the email.
+    :param user: The user's email address
+    :param to: The recipient's email address
+    :param message_text: The text of the email
+    :param socket: the socket that is connected to the network
+    :author: Joe Casper
+    :return: a response from the server
+    """
+    socket.send(b'MAIL FROM: ' + user.encode('ASCII') + b'\r\n')
 
-    # Server asks for password, read past line
-    response_pass = read_line(wrapped_socket)
+    response = read_line(socket)
 
-    # Send password
-    # if b'334' in response_pass:
-    wrapped_socket.send(password.encode('ASCII') + b'\r\n')
+    if b'250' in response:
+        socket.send(b'RCPT TO: ' + to.encode('ASCII') + b'\r\n')
+        response = read_line(socket)
 
-    # get conformation from the server that it has made a connection
-    response_confirm = read_line(wrapped_socket)
+    if b'250' in response:
+        socket.send(b'DATA\r\n')
+        response = read_line(socket)
 
-    if b'235' in response_confirm:
-        wrapped_socket.send(b'MAIL FROM: ' + message_info.get('From').encode('ASCII') + b'\r\n')
+    if b'354' in response:
+        socket.send(message_text.encode('ASCII') + b'\r\n')
+        print(message_text.encode('ASCII') + b'\r\n')
+        response = read_line(socket)
 
-    # read past OK message
-    read_line(wrapped_socket)
+    if b'250' in response:
+        socket.send(b'QUIT\r\n')
+        response = read_line(socket)
 
-    # Tell the server where to send the message
-    wrapped_socket.send(b'RCPT TO: ' + message_info.get('To').encode('ASCII') + b'\r\n')
+    return response
 
-    # read past OK message
-    read_line(wrapped_socket)
 
-    wrapped_socket.send(b'DATA\r\n')
+def send_username_and_pass(username, password, socket):
+    """
+    Sends the user's username and password to the server, both of which are encoded in base64
+    :param username: the user's unencrypted username
+    :param password: the user's unencrypted password
+    :param socket: the socket that is connected to the network
+    :author: Joe Casper
+    :return: a response from the network
+    """
+    encoded_username = base64.b64encode(username.encode('ASCII'))
+    socket.send(encoded_username + b'\r\n')
 
-    read_line(wrapped_socket)
+    response = read_line(socket)
 
-    wrapped_socket.send(message_text.encode('ASCII'))
+    encoded_password = base64.b64encode(password.encode('ASCII'))
+    socket.send(encoded_password + b'\r\n')
 
-    read_line(wrapped_socket)
-
-    wrapped_socket.send(b'QUIT\r\n')
-
-    read_line(wrapped_socket)
+    return read_line(socket)
 
 
 def send_ehlo(socket):
     """
     Sends 'EHLO' to the server, returns the response
     :param socket: socket connected to the server
+    :author Joe Casper
     :return: the server's response
     """
     socket.send(b'EHLO\r\n')
@@ -223,9 +247,9 @@ def get_response(socket):
     """
     Reads in the response form the server. The method stops reading when the server
     sends a line that does not contain a dash
-    :param socket: The socket to read from
-    :return: the response from the server
+    :param socket: The socket that is connected to the network
     :author: Joe Casper
+    :return: the response from the server
     """
 
     line = b'-'
@@ -242,6 +266,7 @@ def read_line(tcp_socket):
     """
     Reads one line of a response
     :author: Joe Casper
+    :param: the socket that is connected to the network
     :return: One line of a response
     """
     byte = b''
@@ -272,6 +297,7 @@ def next_byte(data_socket):
     """
     return data_socket.recv(1)
 
+
 # Your code and additional functions go here. (Replace this line, too.)
 
 # ** Do not modify code below this line. **
@@ -294,7 +320,6 @@ def get_formatted_date():
     :return: Formatted current date/time value, as a string.
     """
     zone = tzlocal.get_localzone()
-    print("zone =", zone)
     timestamp = datetime.datetime.now(zone)
     timestring = timestamp.strftime('%a, %d %b %Y %H:%M:%S %z')  # Sun, 06 Nov 1994 08:49:37 +0000
     return timestring
