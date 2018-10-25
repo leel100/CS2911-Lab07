@@ -26,6 +26,7 @@ import base64
 # Python date/time and timezone modules
 import datetime
 import time
+
 import pytz
 import tzlocal
 
@@ -56,13 +57,13 @@ def main():
     (username, password) = login_gui()
 
     message_info = {}
-    message_info['To'] = 'casperjm@msoe.edu'
+    message_info['To'] = 'leel@msoe.edu'
     message_info['From'] = username
     message_info['Subject'] = 'Yet another test message'
     message_info['Date'] = 'Thu, 9 Oct 2014 23:56:09 +0000'
     message_info['Date'] = get_formatted_date()
 
-    message_text = 'Hello, this is a test message.\r\n.'
+    message_text = 'I need more ☕\r\n.\r\n'
 
     smtp_send(password, message_info, message_text)
 
@@ -155,8 +156,8 @@ def send_with_encryption(password, message_info, message_text, tcp_socket):
     :param message_info: the headers of the email
     :param message_text: the text of the email
     :param tcp_socket: the socket that has the connection
-    :author: Joe Casper
     :return: a response from the server
+    :author: Joe Casper
     """
     response = read_line(tcp_socket)
 
@@ -185,24 +186,31 @@ def send_mail_from(user, to, message_text, socket):
     :param to: The recipient's email address
     :param message_text: The text of the email
     :param socket: the socket that is connected to the network
-    :author: Joe Casper
     :return: a response from the server
+    :author: Joe Casper and Lauren Lee 
     """
-    socket.send(b'MAIL FROM: ' + user.encode('ASCII') + b'\r\n')
 
+    socket.send(b'MAIL FROM: ' + user.encode('UTF-8') + b'\r\n')
     response = read_line(socket)
 
     if b'250' in response:
-        socket.send(b'RCPT TO: ' + to.encode('ASCII') + b'\r\n')
+        socket.send(b'RCPT TO: ' + to.encode('UTF-8') + b'\r\n')
         response = read_line(socket)
 
     if b'250' in response:
         socket.send(b'DATA\r\n')
+        socket.send(b'To: ' + to.encode('UTF-8') + b'\r\n')
+        socket.sendall(b'Subject: This is the subject\r\n')
+        socket.sendall(u'Content-Type : content="text/plain" charset="UTF-8"\r\n'.encode('UTF-8'))
+        date = get_formatted_date()
+        date = str.encode(date)
+        socket.send(b'Date: ' + date + b'\r\n\r\n')
         response = read_line(socket)
 
     if b'354' in response:
-        socket.send(message_text.encode('ASCII') + b'\r\n')
-        print(message_text.encode('ASCII') + b'\r\n')
+        message_text = message_text.encode("utf-8").decode()
+        socket.send(message_text.encode('UTF-8') + b'\r\n')
+        print(message_text.encode('UTF-8') + b'\r\n')
         response = read_line(socket)
 
     if b'250' in response:
@@ -218,15 +226,18 @@ def send_username_and_pass(username, password, socket):
     :param username: the user's unencrypted username
     :param password: the user's unencrypted password
     :param socket: the socket that is connected to the network
-    :author: Joe Casper
     :return: a response from the network
+    :author: Joe Casper
     """
-    encoded_username = base64.b64encode(username.encode('ASCII'))
+
+    encoded_username = base64.b64encode(username.encode('UTF-8'))
+
     socket.send(encoded_username + b'\r\n')
 
     response = read_line(socket)
 
-    encoded_password = base64.b64encode(password.encode('ASCII'))
+    encoded_password = base64.b64encode(password.encode('UTF-8'))
+
     socket.send(encoded_password + b'\r\n')
 
     return read_line(socket)
@@ -236,8 +247,8 @@ def send_ehlo(socket):
     """
     Sends 'EHLO' to the server, returns the response
     :param socket: socket connected to the server
-    :author Joe Casper
     :return: the server's response
+    :author Joe Casper
     """
     socket.send(b'EHLO\r\n')
     return get_response(socket)
@@ -248,8 +259,8 @@ def get_response(socket):
     Reads in the response form the server. The method stops reading when the server
     sends a line that does not contain a dash
     :param socket: The socket that is connected to the network
-    :author: Joe Casper
     :return: the response from the server
+    :author: Lauren Lee edited by Joe Casper
     """
 
     line = b'-'
@@ -258,16 +269,15 @@ def get_response(socket):
     while b'-' in line:
         line = read_line(socket)
         response += line
-
     return response
 
 
 def read_line(tcp_socket):
     """
     Reads one line of a response
-    :author: Joe Casper
     :param: the socket that is connected to the network
     :return: One line of a response
+    :author: Joe Casper
     """
     byte = b''
     line = b''
@@ -278,6 +288,23 @@ def read_line(tcp_socket):
         line += byte
 
     return line
+
+
+def read_single_line(tcp_socket):
+    """
+    The server will read a single line
+    :return: returns the single line that is reads from the server
+    :author: Lauren Lee
+    """
+    single_line = b''
+    byte = b''
+
+    # run until the next byte does not find \n
+    while byte != b'\n':
+        single_line += byte
+        byte = next_byte(tcp_socket)
+
+    return single_line
 
 
 def next_byte(data_socket):
